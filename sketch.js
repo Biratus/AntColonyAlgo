@@ -24,90 +24,8 @@ class Point {
 
 var q;
 var backAndForth=0;
-class Ant {
-    constructor(pt) {
-        this.nodeTrace=[pt];
-        this.pos=pt.pos.copy();
-        this.vel=createVector();
-        this.speed=10;
-    }
 
-    goTo(pt,onFinish) {
-        this.vel=pt.pos.copy().sub(this.pos).normalize();
-        this.vel.mult(this.speed);
-        this.target=pt;
-        this.finishCallback=onFinish;
-    }
-
-    update() {
-        this.pos.add(this.vel);
-        if(this.target && this.pos.dist(this.target.pos)<5) {// On target!
-            this.pos=this.target.pos.copy();
-            this.leavePheromones();
-            this.nodeTrace.push(this.target);
-            this.finishCallback.call(this);
-        }
-    }
-
-    leavePheromones() {
-        let trail = graph.getTrail(this.currentNode(),this.target);
-        trail.pheromones+=q/trail.dist;
-    }
-
-    currentNode() {
-        return this.nodeTrace[this.nodeTrace.length-1];
-    }
-
-    posHashCode() {
-        let tmp = ( this.pos.y +  ((this.pos.x+1)/2));
-        return this.pos.x +  ( tmp * tmp);
-    }
-
-    stop() {
-        this.vel.mult(0);
-    }
-
-    draw() {
-        fill(255,255,0);
-
-        ellipse(this.pos.x,this.pos.y,10);
-    }
-
-    leaveRelativePheromones() {
-        let totDist=this.totalDistance();
-        //console.log("totDist: "+totDist+" "+(q/totDist));
-        let prevNode=null;
-        for(let n of this.nodeTrace) {
-            if(prevNode==null) {
-                prevNode=n;
-                continue;
-            }
-
-            let trail = graph.getTrail(prevNode,n);
-            trail.pheromones+=q/totDist
-
-            prevNode=n;
-        }
-    }
-
-    totalDistance() {
-        let totDist=0;
-        let prevNode=null;
-        for(let n of this.nodeTrace) {
-            if(prevNode==null) {
-                prevNode=n;
-                continue;
-            }
-
-            totDist+=new Trail(prevNode,n).dist;
-
-            prevNode=n;
-        }
-        return totDist;
-    }
-
-}
-
+var selectedNodes=[];
 var nodes=[];
 var ants=[];
 
@@ -121,11 +39,24 @@ var graph;
 
 var nbAnt=20;
 var nbNode=4;
-var nbNodeLayer=7;
+var nbNodeLayer=5;
 
 var gamma=0.1;
-var pheromoneIntensity=2;
-var visibilityIntensity=0.5;
+var pheromoneIntensity=1;
+var visibilityIntensity=1;//are they attracted by other nodes
+
+
+
+/*
+
+TODO: 
+
+Lifespan for ant
+food increases lifespan
+when ant die other is born
+
+*/
+
 
 function setup() {
     createCanvas(500,500);
@@ -137,7 +68,7 @@ function setup() {
     //Start
     start=new Node(width*0.5,height*0.1);
     start.color=[0,0,255];
-    
+
     q=start.pos.dist(food.pos);
 
     graph=new Graph(start);
@@ -172,9 +103,11 @@ function setup() {
     for(let i=0;i<nbAnt;i++) {
         ants.push(new Ant(start));
     }
-    for(let i in ants) seekFood(i);
+    for(let a of ants) seekFood(a);
 }
 
+var drawBest=false;
+var drawAnt=false;
 function draw() {
     background(0);
     start.draw();
@@ -182,14 +115,24 @@ function draw() {
 
     for(let a of ants) {
         a.update();
-        a.draw();
+        if(drawAnt) a.draw();
     }
 
     //for(let n of nodes) n.draw();
 
     graph.draw();
-    graph.highlightBest();
+    if(drawBest) graph.highlightBest();
 
+    drawSelected();
+
+}
+
+function killAnt(ant) {
+    console.log("birth");
+    let ant_=new Ant(start);
+    ants[ants.indexOf(ant)]=ant_;
+    seekFood(ant_);
+    ant=null;
 }
 
 function codeFromPoints(node1,node2) {
@@ -202,13 +145,16 @@ function codeFromPoints(node1,node2) {
     return new Point(i,j).hashCode();
 }
 
-function seekFood(antIndex) {
-    let ant=ants[antIndex];
+function seekFood(ant) {
+//    let ant=ants[antIndex];
     let antCode=ant.posHashCode();
 
     if(antCode==food.hashCode()) {
         ant.leaveRelativePheromones();
-        returnHome(antIndex);
+        ant.lifespan+=500;
+        if(ant.lifespan>7000) ant.lifespan=7000 ;
+        //console.log(new Date().getTime()-ant.startDate);
+        returnHome(ant);
         return;
     }
 
@@ -217,23 +163,25 @@ function seekFood(antIndex) {
 
     if(target==null) {
         console.error("next node is null");
-        ants[antIndex].stop();
+        ant.stop();
     }
     else {  //launch set target for ant 
-        ant.goTo(target,() => seekFood(antIndex));
+        ant.goTo(target,() => seekFood(ant));
     }
 
 }
 
-function returnHome(antIndex) {
-    let ant=ants[antIndex];
+function returnHome(ant) {
+   // let ant=ants[antIndex];
 
     let antCode=ant.posHashCode();
 
     if(antCode==start.hashCode()) {
-        seekFood(antIndex);
-        if(antIndex==0) backAndForth++;
+        seekFood(ant);
+        ant.leaveRelativePheromones();
+        if(ants[0]===ant) backAndForth++;
         ant.nodeTrace=[start];
+        ant.startDate=new Date().getTime();
         return;
     }
 
@@ -242,10 +190,10 @@ function returnHome(antIndex) {
 
     if(target==null) {
         console.error("next node is null");
-        ants[antIndex].stop();
+        ant.stop();
     }
     else {  //launch set target for ant 
-        ant.goTo(target,() => returnHome(antIndex));
+        ant.goTo(target,() => returnHome(ant));
     }
 }
 
@@ -289,7 +237,7 @@ function pickNextNodeFromPossible(currentNode,possibleNodes) {
 function pickOne(probs) {
     let count=0;
     let rnd=random();
-     for(let e of probs) {
+    for(let e of probs) {
         count+=e[1];
         if(rnd<=count) {
             return e[0];
@@ -300,6 +248,93 @@ function pickOne(probs) {
 
 function goToRandomNode(antIndex) {
     ants[antIndex].goTo(nextNode(ants[antIndex]),()=> goToRandomNode(antIndex));
+}
+
+function mouseClicked() {
+    let mousePos=createVector(mouseX,mouseY);
+    let possibleNodes=render_nodes.filter(n => mousePos.dist(n.pos)<5);
+    let possibleNode=possibleNodes[0];
+    if(possibleNodes.length>1) {
+        let minDist=6;
+        for(let n of possibleNodes) {
+            if(n.pos.dist(mousePos)<minDist) {
+                possibleNode=n;
+                minDist=n.pos.dist(mousePos);
+            }
+        }
+    } else if(possibleNodes.length==0) return;
+
+    console.log(possibleNode);
+    if(selectedNodes.includes(possibleNode)) {
+        possibleNode.color=[255,255,0];
+        selectedNodes=selectedNodes.filter(n_ => n_.pos.equals(possibleNode.pos));
+    }
+    else {
+        possibleNode.color=[0,0,255];
+        selectedNodes.push(possibleNode);
+    }
+}
+
+function drawSelected() {
+    if(selectedNodes.length<=1) return;
+
+    let prevNode=null;
+    let trailTrace=[];
+    for(let n of selectedNodes) {
+        if(prevNode==null) {
+            prevNode=n;
+        }
+        else {
+            trailTrace.push(new Trail(n,prevNode));
+            prevNode=n;
+        }
+    }
+    for(let t of trailTrace) {
+        stroke(255,0,0,150);
+        strokeWeight(5);
+        line(t.nodeA.pos.x,t.nodeA.pos.y,t.nodeB.pos.x,t.nodeB.pos.y);
+    }
+}
+
+function getBestTrail() {
+    let trailTrace=[];
+    let currNode=graph.start;
+
+    while(currNode.nextNodes.length>0) {
+        let bestTrail=null;
+        let bestNode=null;
+        for(let n of currNode.nextNodes) {
+            let t=graph.getTrail(currNode,n);
+            if(!bestTrail || t.pheromones>bestTrail.pheromones) {
+                bestTrail=t;
+                bestNode=n;
+            }
+        }
+        trailTrace.push(bestTrail);
+        currNode=bestNode;
+    }
+    console.log(trailTrace.reduce((acc,elt) => acc+=elt.dist,0));
+    return trailTrace;  
+}
+
+function getDistTrail() {
+    let totDist=0;
+    let prevNode=null;
+    let trailTrace=[];
+    for(let n of selectedNodes) {
+        if(prevNode==null) {
+            prevNode=n;
+        }
+        else {
+            trailTrace.push(new Trail(n,prevNode));
+            totDist+=new Trail(n,prevNode).dist;
+            prevNode=n;
+        }
+    }
+    console.log(totDist);
+
+    console.log(trailTrace.reduce((acc,elt) => acc+=elt.dist,0));
+
 }
 
 function nextNode(node) {

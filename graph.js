@@ -90,7 +90,7 @@ class Node {
 
     draw() {
         stroke(this.color);
-
+        noFill();
         ellipse(this.pos.x,this.pos.y,10);
     }
 
@@ -124,11 +124,12 @@ class Trail {
         this.dist=nodeA.pos.dist(nodeB.pos);
         this.visibility=1/this.dist;
         
-        this.intervalUpdate=setInterval(() => this.pheromones=this.pheromones<0.005?0:this.pheromones*0.1,1000);
+//        this.intervalUpdate=setInterval(() => this.pheromones=this.pheromones<0.005?0:this.pheromones*0.1,1000);
+        this.intervalUpdate=setInterval(() => this.pheromones=this.pheromones<0.005?0:this.pheromones*0.7,1000);
     }
 
     draw() {
-        stroke(255,255,255,this.pheromones*nbAnt*0.1);
+        stroke(255,255,255,this.pheromones*nbAnt);
         strokeWeight(2);
         line(this.nodeA.pos.x,this.nodeA.pos.y,this.nodeB.pos.x,this.nodeB.pos.y);
     }
